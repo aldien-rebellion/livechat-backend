@@ -1,0 +1,5 @@
+{
+  "summary":  "Detailed issue specifications and API contracts for each of the 21 issues across livechat-backend and livechat-frontend, ensuring perfect integration across FastAPI, React, PostgreSQL tsvector, Redis, and Docker.",
+  "updatedAt":  "2026-10-17T09:37:31.952606700Z",
+  "userFacing":  true
+}
