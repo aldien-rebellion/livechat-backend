@@ -1,5 +1,26 @@
 # livechat-backend
 
+## Backend image — Backend #1
+
+```powershell
+docker build -t livechat-backend:local .
+```
+
+Image ใช้ Python 3.11-slim, ติดตั้ง dependencies จาก `requirements.txt` และรันด้วย user `app`
+ที่ไม่ใช่ root โดยเก็บ build tools ไว้เฉพาะ builder stage
+`.dockerignore` ตัด Git history, local env, private keys และไฟล์แผนออกจาก build context
+
+ก่อนรัน API ต้องมี `app/main.py` ที่ export `app` จาก Backend #10 และ endpoint `/healthcheck`
+requirements ใน issue นี้มีเฉพาะ FastAPI/Uvicorn; เจ้าของ DB/Auth เพิ่ม dependencies ของตนใน issue ที่เกี่ยวข้อง
+issue นี้ไม่ได้สร้าง placeholder API แทนงาน Backend #10
+
+```powershell
+docker run --rm --env-file .env -p 127.0.0.1:8000:8000 livechat-backend:local
+```
+
+Container เริ่ม `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+และตรวจ health ด้วย HTTP `/healthcheck`; เมื่อรันผ่าน Compose ใช้คำสั่งในหัวข้อ Full application profile
+
 ## Local infrastructure — Backend #2
 
 ต้องติดตั้ง Docker Engine/Docker Desktop พร้อม Docker Compose และเปิด Engine ก่อนใช้งาน
@@ -21,7 +42,8 @@ docker compose ps
 | PostgreSQL (SQLAlchemy async) | `postgresql+asyncpg://postgres:postgres@localhost:5432/livechat_db` |
 | Redis | `redis://localhost:6379/0` |
 
-ชื่อผู้ใช้/รหัสผ่านใน `.env.example` ใช้สำหรับ local development เท่านั้น
+`.env.example` ระบุเฉพาะชื่อตัวแปรโดยเว้นค่าว่าง ให้ใส่ค่าของเครื่องคุณใน `.env`
+ตัวแปรที่เว้นว่างจะใช้ค่า local development เริ่มต้นใน Compose; ใส่ค่าจริงก่อนนำขึ้น server
 พอร์ต DB/Redis และ API ผูกกับ `127.0.0.1`; เปลี่ยน host ports ได้ใน `.env` หากพอร์ตชน
 ถ้าเปลี่ยนชื่อผู้ใช้/รหัสผ่าน ต้องปรับ URL ของแอปที่รันบนเครื่องตามด้วย
 Compose นี้ประกอบ DATABASE_URL จากค่าดังกล่าวโดยตรง จึงใช้ชื่อผู้ใช้/รหัสผ่านที่เป็น URL-safe
