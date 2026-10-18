@@ -1,5 +1,11 @@
 # livechat-backend
 
+## AWS EC2 — Backend #3
+
+ไฟล์ Terraform และ bootstrap สำหรับ Ubuntu 22.04, Security Group, SSH key pair และ Docker/Compose
+อยู่ที่ [infra/ec2/README.md](infra/ec2/README.md)
+ยังไม่ได้ provision เครื่องจริง เนื่องจาก AWS Organizations SCP ปฏิเสธ EC2 API ของบัญชีที่มีอยู่
+
 ## Backend image — Backend #1
 
 ```powershell
