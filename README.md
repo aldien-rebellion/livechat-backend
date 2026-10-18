@@ -21,7 +21,8 @@ docker compose ps
 | PostgreSQL (SQLAlchemy async) | `postgresql+asyncpg://postgres:postgres@localhost:5432/livechat_db` |
 | Redis | `redis://localhost:6379/0` |
 
-ชื่อผู้ใช้/รหัสผ่านใน `.env.example` ใช้สำหรับ local development เท่านั้น
+`.env.example` ระบุเฉพาะชื่อตัวแปรโดยเว้นค่าว่าง ให้ใส่ค่าของเครื่องคุณใน `.env`
+ตัวแปรที่เว้นว่างจะใช้ค่า local development เริ่มต้นใน Compose; ใส่ค่าจริงก่อนนำขึ้น server
 พอร์ต DB/Redis และ API ผูกกับ `127.0.0.1`; เปลี่ยน host ports ได้ใน `.env` หากพอร์ตชน
 ถ้าเปลี่ยนชื่อผู้ใช้/รหัสผ่าน ต้องปรับ URL ของแอปที่รันบนเครื่องตามด้วย
 Compose นี้ประกอบ DATABASE_URL จากค่าดังกล่าวโดยตรง จึงใช้ชื่อผู้ใช้/รหัสผ่านที่เป็น URL-safe
