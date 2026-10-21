@@ -1,5 +1,5 @@
 {
-  "summary": "Master Architecture Blueprint & Migration Guide for starting the new Live Chat GitHub repository, featuring FastAPI backend, React/Vite frontend, PostgreSQL tsvector search, Redis Pub/Sub, Dual-token JWT, AWS EC2 Docker deployment, and GitHub Actions CI/CD.",
-  "updatedAt": "2026-10-13T10:04:49.202608600Z",
+  "summary": "Master Architecture Blueprint & Migration Guide for starting the new Live Chat GitHub repository, featuring FastAPI backend, React/Vite frontend, PostgreSQL tsvector search, Redis Pub/Sub, Dual-token JWT, AWS EC2 Docker deployment, and separated GitHub Actions CI (Step 1) and CD (Step 5) workflows for both Backend and Frontend.",
+  "updatedAt": "2026-10-21T16:55:00.000000000Z",
   "userFacing": true
 }

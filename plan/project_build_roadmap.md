@@ -1,101 +1,149 @@
 # Actionable Project Build Roadmap: Real-Time Live Chat Platform
 > **Target Deadline:** ก่อนวันศุกร์ที่ 24  
 > **Repository Strategy:** 2 Repositories แยกกัน (`livechat-backend` & `livechat-frontend`)  
-> **Team Size:** 4 คน (ทุกคนต้องมีประวัติ Git Commit ในส่วนของตัวเอง)  
-> **Deployment Target:** AWS EC2 + Docker Compose + Nginx (HTTPS)
+> **Team Accountability:** 4 บทบาทชัดเจน ทุกคนมีประวัติ Git Commit ใน Issues ของตัวเอง  
+> **Deployment Target:** AWS EC2 + Docker Compose + Nginx (HTTPS Let's Encrypt)
 
 ---
 
-## 1. การแบ่งบทบาทหน้าที่ 4 คนในทีม (Team Accountability)
+## 1. การแบ่งบทบาทหน้าที่ 4 คนในทีม (Team Roles)
 
-อาจารย์เน้นย้ำว่า **"ทุกคนต้องมี Git Commit ยืนยันการลงมือจริง"** ดังนั้นจึงแบ่งหน้าที่ตาม 4 เสาหลักอย่างเด็ดขาด:
+* 🌸 **`[คนที่ 1 {Frontend Lead}]`**: รับผิดชอบ React + Vite + TypeScript + Tailwind CSS, WebSocket Client, หน้าจอ UI ทั้งหมด
+* 🍊 **`[คนที่ 2 {Backend Lead}]`**: รับผิดชอบ FastAPI Core, Dual-Token JWT, Workspace WebSocket Hub (`/ws`), Redis Pub/Sub, Presence
+* 🍏 **`[คนที่ 3 {Database Lead}]`**: รับผิดชอบ SQLAlchemy 2.0 Models, Alembic Migrations, PostgreSQL Full-Text Search (`tsvector` & `ts_rank`)
+* 🔷 **`[คนที่ 4 {DevOps Lead}]`**: รับผิดชอบ Dockerfile (ทั้ง 2 Repos), docker-compose, AWS EC2, GitHub Actions CI & CD (ทั้ง 2 Repos), SSL & Prometheus/Grafana
+
+---
+
+## 2. ลำดับขั้นตอนการทำงานจริง (Chronological Order: Step 1 ถึง Step 5)
 
 ```mermaid
 flowchart TD
-    subgraph RepoFrontend["📦 Repo 1: livechat-frontend"]
-        M1["👤 สมาชิกคนที่ 1: Frontend Lead & UI/UX<br/>• สร้างโปรเจกต์ React + Vite + Tailwind CSS<br/>• พัฒนาหน้าตา: Login, Sidebar, ChannelList, ChatArea, SearchModal<br/>• เชื่อมต่อ WebSocketContext และ Axios Interceptor (Auto-refresh Token)<br/>• Git Branch: `feat/ui-components`, `feat/ws-client`"]
+    %% Styling Classes
+    classDef c_person1 fill:#e11d48,stroke:#ffe4e6,stroke-width:2px,color:#ffffff
+    classDef c_person2 fill:#d97706,stroke:#fef3c7,stroke-width:2px,color:#ffffff
+    classDef c_person3 fill:#059669,stroke:#d1fae5,stroke-width:2px,color:#ffffff
+    classDef c_person4 fill:#2563eb,stroke:#dbeafe,stroke-width:2px,color:#ffffff
+
+    %% Subgraph Legend
+    subgraph Legend ["🎨 โค้ดสีประจำตัวสมาชิก 4 คน"]
+        L1["[คนที่ 1 {Frontend Lead}]"]:::c_person1
+        L2["[คนที่ 2 {Backend Lead}]"]:::c_person2
+        L3["[คนที่ 3 {Database Lead}]"]:::c_person3
+        L4["[คนที่ 4 {DevOps Lead}]"]:::c_person4
     end
 
-    subgraph RepoBackend["📦 Repo 2: livechat-backend"]
-        M2["👤 สมาชิกคนที่ 2: Backend API & WebSocket Hub<br/>• พัฒนา FastAPI App, Routers และ Controllers<br/>• เขียน Persistent WebSocket Endpoint (`/ws`) และ Redis Pub/Sub Fanout<br/>• ระบบ Dual-Token JWT Auth (`/auth/login`, `/auth/refresh`)<br/>• Git Branch: `feat/auth-jwt`, `feat/workspace-ws`"]
-
-        M3["👤 สมาชิกคนที่ 3: Database & Full-Text Search<br/>• ออกแบบ Database Schema (Users, Workspaces, Channels, Messages)<br/>• สร้าง Alembic Migrations และจัดการ Database Pooling (asyncpg)<br/>• พัฒนา PostgreSQL Full-Text Search (`tsvector` + GIN Index)<br/>• Git Branch: `feat/db-models`, `feat/fulltext-search`"]
+    %% Subgraph Step 1
+    subgraph Step1 ["📍 ลำดับที่ 1: ขั้นวางรากฐานและโครงสร้างเริ่มต้น (เริ่มพร้อมกัน)"]
+        BE2["Backend #2: docker-compose.yml (Postgres & Redis)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        BE1["Backend #1: Dockerfile Backend\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        FE1["Frontend #1: Dockerfile Frontend\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        BE3["Backend #3: Provision AWS EC2 & Security Group\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        BE4["Backend #4: CI Pipeline (Pytest & Lint on PR)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        FE8["Frontend #8: CI Pipeline (Type Check, Lint, Build)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        
+        BE6["Backend #6: Data Models ด้วย SQLAlchemy 2.0\n[คนที่ 3 {Database Lead}]"]:::c_person3
+        BE10["Backend #10: โครงสร้าง FastAPI, Schemas & CORS\n[คนที่ 2 {Backend Lead}]"]:::c_person2
+        FE2["Frontend #2: Setup React + Vite + TS + Tailwind\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
     end
 
-    subgraph InfraDevOps["☁️ Infrastructure, CI/CD & Testing (ข้าม 2 Repos)"]
-        M4["👤 สมาชิกคนที่ 4: DevOps, Cloud & QA Lead<br/>• เขียน `Dockerfile` ของทั้ง 2 Repos และ `docker-compose.yml`<br/>• ตั้งค่า GitHub Actions CI/CD (Pytest -> GHCR/Docker Hub -> SSH Deploy)<br/>• Provision และตั้งค่า AWS EC2 + Nginx SSL (Let's Encrypt)<br/>• ติดตั้ง Prometheus + Grafana และสคริปต์ k6 Load Testing<br/>• Git Branch: `infra/docker-compose`, `ci/github-actions`"]
+    %% Subgraph Step 2
+    subgraph Step2 ["📍 ลำดับที่ 2: ขั้นสร้างตารางฐานข้อมูลและจัดโครงหน้าตาเว็บ"]
+        BE7["Backend #7: Alembic Migration สร้าง Tables ทั้งหมด\n[คนที่ 3 {Database Lead}]"]:::c_person3
+        FE4["Frontend #4: UI Component Sidebar & Channel List\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
+        FE5["Frontend #5: Chat UI พัฒนาพื้นที่กล่องแชท\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
     end
 
-    M1 <-->|REST & WSS| M2
-    M2 <-->|Async ORM & SQL| M3
-    M4 -->|Automated Build & Deploy| RepoFrontend
-    M4 -->|Automated Build & Deploy| RepoBackend
+    %% Subgraph Step 3
+    subgraph Step3 ["📍 ลำดับที่ 3: ขั้นพัฒนาระบบหลังบ้าน Core Logic (APIs, WebSocket & Search)"]
+        BE11["Backend #11: Auth API Dual-Token JWT\n[คนที่ 2 {Backend Lead}]"]:::c_person2
+        BE12["Backend #12: WebSocket Hub (/ws) Multiplexing\n[คนที่ 2 {Backend Lead}]"]:::c_person2
+        BE13["Backend #13: Real-Time Engine (Redis Pub/Sub)\n[คนที่ 2 {Backend Lead}]"]:::c_person2
+        BE14["Backend #14: Presence Heartbeat (TTL 60s)\n[คนที่ 2 {Backend Lead}]"]:::c_person2
+        
+        BE8["Backend #8: เพิ่มฟิลด์ search_vector & Trigger\n[คนที่ 3 {Database Lead}]"]:::c_person3
+        BE9["Backend #9: GIN Index & ค้นหาด้วย ts_rank\n[คนที่ 3 {Database Lead}]"]:::c_person3
+    end
+
+    %% Subgraph Step 4
+    subgraph Step4 ["📍 ลำดับที่ 4: ขั้นเชื่อมต่อระบบหน้าบ้านเข้ากับหลังบ้าน (Integration)"]
+        FE3["Frontend #3: Auth UI หน้า Login/Register ต่อ API\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
+        FE6["Frontend #6: WebSocket Client ต่อ /ws และ Typing\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
+        FE7["Frontend #7: Search UI หน้าต่างค้นหาข้อความย้อนหลัง\n[คนที่ 1 {Frontend Lead}]"]:::c_person1
+    end
+
+    %% Subgraph Step 5
+    subgraph Step5 ["📍 ลำดับที่ 5: ขั้นนำขึ้นระบบจริงและมอนิเตอร์ (Production & Monitoring)"]
+        BE15["Backend #15: CD Workflow (SSH Deploy Backend to EC2)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        FE9["Frontend #9: CD Workflow (SSH Deploy Frontend to EC2)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        BE5["Backend #5: SSL Let's Encrypt & Prometheus/Grafana\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+    end
+
+    %% Connections
+    BE2 & BE6 --> BE7
+    FE2 --> FE4 & FE5
+
+    BE7 & BE10 --> BE11
+    BE2 & BE10 --> BE12
+    BE12 --> BE13 & BE14
+    BE7 --> BE8 --> BE9
+
+    BE11 --> FE3
+    BE12 & BE13 --> FE6
+    BE9 --> FE7
+
+    %% CI Safeguards
+    BE4 -.->|Protects PRs| BE7 & BE11 & BE12 & BE8
+    FE8 -.->|Protects PRs| FE4 & FE5 & FE3 & FE6 & FE7
+
+    %% CD Deployment triggers
+    BE1 & BE3 & BE11 & BE13 & BE14 & BE9 --> BE15
+    FE1 & BE3 & FE3 & FE6 & FE7 --> FE9
+    BE15 & FE9 --> BE5
 ```
 
 ---
 
-## 2. แผนการพัฒนารายสปรินต์ (Sprint Timeline จนถึงวันนำเสนอ)
+## 3. รายละเอียดเนื้องานตามลำดับ (Step-by-Step Breakdown)
 
-### 🗓️ Phase 1: Repo Setup & Core Foundations (วันที่ 1 - 2)
-* **คนที่ 4 (DevOps):**
-  * สร้าง 2 Repositories บน GitHub: `livechat-backend` และ `livechat-frontend`
-  * เพิ่มเพื่อนทั้ง 3 คนเป็น Collaborators
-  * ร่างไฟล์ `docker-compose.yml` สำหรับรัน Postgres 15 และ Redis 7 ในเครื่อง
-* **คนที่ 3 (DB):**
-  * วางโครงสร้าง SQLAlchemy 2.0 Async Models (User, Workspace, Channel, Message, MessageRead)
-  * ตั้งค่า Alembic และรัน Migration ครั้งแรก
-* **คนที่ 2 (Backend):**
-  * วางโครงสร้าง FastAPI (`app/main.py`, Settings, CORS, Auth Router)
-  * ทำ Dual-Token JWT (Access Token 30m / Refresh Token 7d)
-* **คนที่ 1 (Frontend):**
-  * สร้างโปรเจกต์ Vite + React + TypeScript + Tailwind CSS
-  * วางโครงสร้าง Routing (หน้า Login, Register, Chat Dashboard)
+### 🏁 Step 1: วางรากฐานและโครงสร้างเริ่มต้น (ทุกคนเริ่มพร้อมกันใน Day 1)
+* **Backend #2:** `[Infrastructure] สร้าง docker-compose.yml ควบคุม Nginx, Postgres, Redis, API และ Frontend` — `[คนที่ 4 {DevOps Lead}]`
+* **Backend #1:** `[DevOps] สร้าง Dockerfile ของ Backend (Python 3.11-slim)` — `[คนที่ 4 {DevOps Lead}]`
+* **Frontend #1:** `[DevOps] สร้าง Dockerfile (Multi-stage Nginx) และตั้งค่า Nginx สำหรับเสิร์ฟไฟล์หน้าเว็บ` — `[คนที่ 4 {DevOps Lead}]`
+* **Backend #3:** `[Cloud] Provision AWS EC2 Instance และตั้งค่า Security Group (Port 80, 443, 22)` — `[คนที่ 4 {DevOps Lead}]`
+* **Backend #4:** `[CI] สร้าง GitHub Actions Workflow รัน Linter (flake8) และ Pytest พร้อม Postgres/Redis Services บนทุก PR` — `[คนที่ 4 {DevOps Lead}]` *(ทำทันทีใน Day 1 ป้องกันโค้ดพังก่อน merge)*
+* **Frontend #8:** `[CI] สร้าง GitHub Actions Workflow รัน Type Check (tsc), Lint และ Build Verification บนทุก PR` — `[คนที่ 4 {DevOps Lead}]` *(ทำทันทีใน Day 1 ป้องกัน build error)*
+* **Backend #6:** `[Database] ออกแบบ Data Models ด้วย SQLAlchemy 2.0 (Users, Workspaces, Channels, Messages)` — `[คนที่ 3 {Database Lead}]`
+* **Backend #10:** `[Backend Core] วางโครงสร้างโปรเจกต์ FastAPI, Pydantic v2 Schemas และการจัดการ CORS` — `[คนที่ 2 {Backend Lead}]`
+* **Frontend #2:** `[Setup] ติดตั้งและสร้างโครงสร้างโปรเจกต์ React + Vite + TypeScript + Tailwind CSS` — `[คนที่ 1 {Frontend Lead}]`
 
 ---
 
-### 🗓️ Phase 2: Real-time Messaging & Search Engine (วันที่ 3 - 4)
-* **คนที่ 2 (Backend):**
-  * สร้าง `/ws` (Workspace-level WebSocket Hub)
-  * เชื่อมต่อ Redis Pub/Sub Broadcast Engine เมื่อมีข้อความเข้า
-  * จัดการ Heartbeat Presence (Online/Offline status TTL 60s)
-* **คนที่ 3 (DB):**
-  * เพิ่มคอลัมน์ `search_vector tsvector` ลงในตาราง `messages`
-  * สร้าง GIN Index และ Trigger อัปเดต Search Vector อัตโนมัติ
-  * ทำ Endpoint ค้นหาข้อความย้อนหลังด้วย `ts_rank`
-* **คนที่ 1 (Frontend):**
-  * พัฒนา `WebSocketContext` เชื่อมต่อ `/ws` และรับส่งข้อความสด
-  * ทำ UI Typing Indicator, สัญลักษณ์สถานะ Online จุดเขียว และ Search Modal
-  * ทำ Axios Interceptor ดักจับ Token หมดอายุและ Refresh อัตโนมัติ
+### 🧱 Step 2: สร้างตารางฐานข้อมูลและจัดโครงหน้าตาเว็บ
+* **Backend #7:** `[Database] ติดตั้ง Alembic และสร้าง Migration แรกสำหรับสร้าง Tables ทั้งหมด` — `[คนที่ 3 {Database Lead}]` *(ต้องรอ Backend #2 และ Backend #6)*
+* **Frontend #4:** `[UI Component] พัฒนาส่วน Sidebar และ Workspace / Channel List` — `[คนที่ 1 {Frontend Lead}]` *(ต้องรอ Frontend #2)*
+* **Frontend #5:** `[Chat UI] พัฒนาพื้นที่กล่องแชท ChatArea แสดงประวัติข้อความและกล่องพิมพ์ส่งข้อความ` — `[คนที่ 1 {Frontend Lead}]` *(ต้องรอ Frontend #2)*
 
 ---
 
-### 🗓️ Phase 3: Containerization & Cloud Deployment on AWS (วันที่ 5 - 6)
-* **คนที่ 4 (DevOps):**
-  * เขียน `Dockerfile` สำหรับ Backend (Python 3.11) และ Frontend (Nginx Multi-stage build)
-  * สร้าง AWS EC2 Instance (Ubuntu 22.04 LTS / t3.small หรือ t3.medium)
-  * ตั้งค่า Security Group (พอร์ต 80, 443, 22)
-  * รัน Docker Compose บน EC2 พร้อมตั้งค่า Nginx Reverse Proxy และ SSL ด้วย Certbot
-  * ทำ GitHub Actions Deploy Workflow (เมื่อมีคน Merge PR เข้า `main` -> SSH ไปสั่ง Docker Compose อัปเดตบน EC2 อัตโนมัติ)
-* **ทั้งทีม:**
-  * รวมทดสอบระบบแบบ End-to-End บน URL จริงของ AWS EC2
+### ⚡ Step 3: พัฒนาระบบหลังบ้าน Core Logic (APIs, WebSocket & Search)
+* **Backend #11:** `[Auth API] พัฒนาระบบ Dual-Token JWT (/api/v1/auth/login, /api/v1/auth/refresh)` — `[คนที่ 2 {Backend Lead}]` *(ต้องรอ Backend #7 และ Backend #10)*
+* **Backend #12:** `[WebSocket Hub] สร้าง Workspace-level WebSocket Endpoint (/ws) รองรับ Multiplexing` — `[คนที่ 2 {Backend Lead}]` *(ต้องรอ Backend #2 และ Backend #10)*
+* **Backend #13:** `[Real-Time Engine] เชื่อมต่อ Redis Pub/Sub เพื่อกระจายข้อความแชทข้าม Client แบบเรียลไทม์` — `[คนที่ 2 {Backend Lead}]` *(ต้องรอ Backend #12)*
+* **Backend #14:** `[Presence] พัฒนาระบบ Presence Heartbeat (บันทึกสถานะ Online/Offline TTL 60s ลง Redis)` — `[คนที่ 2 {Backend Lead}]` *(ต้องรอ Backend #12)*
+* **Backend #8:** `[Search Engine] เพิ่มฟิลด์ search_vector (tsvector) ในตาราง messages พร้อมสร้าง Auto-Update Trigger` — `[คนที่ 3 {Database Lead}]` *(ต้องรอ Backend #7)*
+* **Backend #9:** `[Search Engine] สร้าง GIN Index และเขียนฟังก์ชัน Query ค้นหาข้อความด้วย ts_rank` — `[คนที่ 3 {Database Lead}]` *(ต้องรอ Backend #8)*
 
 ---
 
-### 🗓️ Phase 4: Load Testing, Observability & Verification (วันที่ 7)
-* **คนที่ 4 & คนที่ 2:**
-  * รัน Prometheus และ Grafana Dashboard บน EC2 เพื่อดู Active WS และ Latency
-  * ยิงสคริปต์ k6 (`ws_stress_test.js`) ทดสอบ Concurrency และแคปภาพสถิติเก็บไว้ใช้ในสไลด์
-* **คนที่ 1 & คนที่ 3:**
-  * เช็กความเรียบร้อยของ UI/UX และระบบค้นหาข้อความ
-  * ตรวจสอบว่าทุกคนมีประวัติ Commit บน GitHub ครบทุกคนตามที่อาจารย์สั่ง
+### 🔗 Step 4: เชื่อมต่อระบบหน้าบ้านเข้ากับหลังบ้าน (Integration)
+* **Frontend #3:** `[Auth UI] ออกแบบหน้าจอ Login / Register และจัดการเก็บ JWT Token ลง State` — `[คนที่ 1 {Frontend Lead}]` *(ต้องรอ Backend #11)*
+* **Frontend #6:** `[WebSocket Client] เชื่อมต่อ WebSocketContext สำหรับรับส่งข้อความสดและ Typing` — `[คนที่ 1 {Frontend Lead}]` *(ต้องรอ Backend #12 และ Backend #13)*
+* **Frontend #7:** `[Search UI] พัฒนาหน้าต่าง Search Modal ค้นหาข้อความย้อนหลังในห้องแชท` — `[คนที่ 1 {Frontend Lead}]` *(ต้องรอ Backend #9)*
 
 ---
 
-## 3. Git Branching & Pull Request Rules (เพื่อคะแนน Git Commit)
-1. **ห้าม Commit ลง branch `main` โดยตรง:** ทุกคนต้องสร้าง Branch ของตัวเอง เช่น:
-   * `feat/user-auth-jwt` (โดย คนที่ 2)
-   * `feat/message-search-tsvector` (โดย คนที่ 3)
-   * `feat/chat-dashboard-ui` (โดย คนที่ 1)
-   * `infra/ec2-docker-compose` (โดย คนที่ 4)
-2. **สร้าง Pull Request (PR):** เมื่อทำฟีเจอร์เสร็จ ให้เปิด PR ขอ Review จากเพื่อนในทีมก่อนกด Merge
-3. **ผลลัพธ์:** เมื่ออาจารย์เปิดดูหน้า Insights > Contributors บน GitHub จะเห็นกราฟ Commit และ PR ของสมาชิกทั้ง 4 คนอย่างชัดเจน 100%
+### ☁️ Step 5: นำขึ้นระบบจริงและมอนิเตอร์ (Production & Monitoring)
+* **Backend #15:** `[CD] เขียน GitHub Actions Workflow Deploy Backend สู่ AWS EC2 ผ่าน SSH (docker compose restart & alembic)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
+* **Frontend #9:** `[CD] เขียน GitHub Actions Workflow Deploy Frontend สู่ AWS EC2 ผ่าน SSH (git pull /opt/livechat-frontend & docker build)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
+* **Backend #5:** `[Observability & SSL] ติดตั้ง SSL Let's Encrypt (Certbot) และระบบมอนิเตอร์ Prometheus + Grafana` — `[คนที่ 4 {DevOps Lead}]` *(ทำต่อจาก Backend #15 และ Frontend #9)*

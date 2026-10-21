@@ -48,56 +48,59 @@ flowchart TD
 
 ---
 
-## 2. Directory Structure for the New Repository
+## 2. Directory Structure for the 2 Repositories
 
+### 2.1 Repository 1: `livechat-backend`
 ```text
-livechat-workspace/
+livechat-backend/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml               # Lint + Pytest (with Postgres/Redis services) + React Test
-│       └── cd.yml               # Docker build -> GHCR push -> SSH deploy to AWS EC2
-├── backend/
-│   ├── alembic/                 # Database migrations (clean livechat domain)
-│   ├── app/
-│   │   ├── config/              # Settings (pydantic-settings), metrics, security
-│   │   ├── controllers/         # REST Controllers & WebSocket endpoint (/ws)
-│   │   ├── db/                  # Async engine & sessionmaker (SQLAlchemy 2.0)
-│   │   ├── models/              # Pure domain models (User, Workspace, Channel, Message, etc.)
-│   │   ├── schemas/             # Pydantic v2 schemas & search queries
-│   │   ├── services/            # Business logic (Auth, ChatPubSub, SearchService, Presence)
-│   │   └── main.py              # FastAPI application factory & router mounting
-│   ├── tests/
-│   │   ├── conftest.py          # Async test fixtures (database, redis, auth clients)
-│   │   ├── test_auth.py
-│   │   ├── test_chat_search.py  # Tests for tsvector full-text search
-│   │   └── test_websocket.py
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── alembic.ini
-├── frontend/
-│   ├── src/
-│   │   ├── components/          # Reusable UI (Sidebar, ChannelList, ChatArea, MessageItem)
-│   │   ├── contexts/            # AuthContext (Token auto-refresh), WebSocketContext
-│   │   ├── hooks/               # useWebSocket, usePresence, useSearch
-│   │   ├── services/            # Axios API client & WebSocket transport
-│   │   ├── pages/               # Login, Register, Workspace, ChannelView
-│   │   └── App.tsx
-│   ├── e2e/                     # Playwright multi-user chat E2E test scripts
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tailwind.config.js
-├── load_testing/
-│   ├── http_load_test.js        # k6 API benchmark
-│   └── ws_stress_test.js        # k6 high-concurrency WebSocket test
-├── monitoring/
-│   ├── prometheus.yml
-│   └── grafana/
-│       └── dashboards/
-├── nginx/
-│   └── nginx.conf               # Reverse proxy, SSL termination & WebSocket upgrade
-├── docker-compose.yml           # Production stack for AWS EC2
-├── docker-compose.override.yml  # Local development overrides
+│       ├── ci.yml               # Backend CI: Lint (flake8) + Pytest (Postgres & Redis services)
+│       └── cd.yml               # Backend CD: SSH deploy to AWS EC2 (git pull & docker compose restart)
+├── alembic/                     # Database migrations (clean livechat domain)
+├── app/
+│   ├── config/                  # Settings (pydantic-settings), metrics, security
+│   ├── controllers/             # REST Controllers & WebSocket endpoint (/ws)
+│   ├── db/                      # Async engine & sessionmaker (SQLAlchemy 2.0)
+│   ├── models/                  # Pure domain models (User, Workspace, Channel, Message, etc.)
+│   ├── schemas/                 # Pydantic v2 schemas & search queries
+│   ├── services/                # Business logic (Auth, ChatPubSub, SearchService, Presence)
+│   └── main.py                  # FastAPI application factory & router mounting
+├── tests/
+│   ├── conftest.py              # Async test fixtures (database, redis, auth clients)
+│   ├── test_auth.py
+│   ├── test_chat_search.py      # Tests for tsvector full-text search
+│   └── test_websocket.py
+├── infra/                       # EC2 Terraform scripts & cloud-init provisioning
+├── nginx/                       # Reverse proxy configuration
+├── Dockerfile
+├── requirements.txt
+├── alembic.ini
+├── docker-compose.yml           # Production & staging stack (Postgres, Redis, API, Frontend, Nginx)
 ├── .env.example
+└── README.md
+```
+
+### 2.2 Repository 2: `livechat-frontend`
+```text
+livechat-frontend/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml               # Frontend CI: Type Check (tsc) + Lint + Build Verification
+│       └── cd.yml               # Frontend CD: SSH deploy to AWS EC2 (git pull /opt/livechat-frontend & rebuild)
+├── src/
+│   ├── components/              # Reusable UI (Sidebar, ChannelList, ChatArea, MessageItem)
+│   ├── contexts/                # AuthContext (Token auto-refresh), WebSocketContext
+│   ├── hooks/                   # useWebSocket, usePresence, useSearch
+│   ├── services/                # Axios API client & WebSocket transport
+│   ├── pages/                   # Login, Register, Workspace, ChannelView
+│   └── App.tsx
+├── public/
+├── Dockerfile                   # Multi-stage build with Nginx for production
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── tailwind.config.js
 └── README.md
 ```
 
@@ -176,11 +179,22 @@ class StorageService:
 
 ## 4. CI/CD Pipeline & AWS EC2 Automated Deployment
 
-### 4.1 GitHub Actions Workflow (`.github/workflows/deploy.yml`)
+ระบบแยก CI และ CD ออกจากกันอย่างชัดเจนตามมาตรฐาน DevOps:
+* **CI (Continuous Integration):** ทำงานทันทีตั้งแต่วันแรก (Day 1 / Step 1) ตรวจสอบโค้ดบนทุก Pull Request และ Push สู่ `main`
+* **CD (Continuous Deployment):** ทำงานใน Step 5 เมื่อ Merge เข้า `main` เพื่อนำโค้ดขึ้นรันบน AWS EC2 โดยอัตโนมัติ
+
+---
+
+### 4.1 Backend Pipelines (`livechat-backend`)
+
+#### 4.1.1 Continuous Integration (`.github/workflows/ci.yml`)
+ทำงานเมื่อมีการเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจสอบคุณภาพโค้ดและรัน Automated Tests
 ```yaml
-name: CI/CD & Deploy to AWS EC2
+name: Backend CI
 
 on:
+  pull_request:
+    branches: [ main ]
   push:
     branches: [ main ]
 
@@ -196,38 +210,138 @@ jobs:
           POSTGRES_DB: livechat_test
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies & Run Pytest
-        run: |
-          pip install -r backend/requirements.txt
-          pytest backend/tests
+          cache: 'pip'
 
-  build-and-deploy:
-    needs: test
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest pytest-asyncio httpx
+
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Pytest
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/livechat_test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          pytest tests
+```
+
+#### 4.1.2 Continuous Deployment (`.github/workflows/cd.yml`)
+ทำงานเมื่อโค้ดถูก Merge สู่ branch `main` เท่านั้น โดย SSH เข้า AWS EC2 เพื่ออัปเดต Service Backend
+```yaml
+name: Backend CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to AWS EC2 via SSH
+      - name: Deploy Backend to AWS EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.AWS_EC2_HOST }}
           username: ${{ secrets.AWS_EC2_USER }}
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/livechat-workspace
+            cd /opt/livechat-backend
             git pull origin main
-            docker compose down
-            docker compose up -d --build
-            docker compose exec -T api alembic upgrade head
+            docker compose up -d --build backend
+            docker compose exec -T backend alembic upgrade head
+```
+
+---
+
+### 4.2 Frontend Pipelines (`livechat-frontend`)
+
+#### 4.2.1 Continuous Integration (`.github/workflows/ci.yml`)
+ทำงานเมื่อมีการเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจ Type Check, Lint และทดสอบ Build จริงของ React + Vite
+```yaml
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type Check & Lint
+        run: |
+          npx tsc --noEmit
+          npm run lint
+
+      - name: Build Verification
+        run: npm run build
+```
+
+#### 4.2.2 Continuous Deployment (`.github/workflows/cd.yml`)
+ทำงานเมื่อโค้ดถูก Merge สู่ branch `main` เท่านั้น โดย SSH เข้า AWS EC2 ไปยังโฟลเดอร์ `/opt/livechat-frontend` สั่ง `git pull` และสั่ง build คอนเทนเนอร์ Frontend ใหม่
+```yaml
+name: Frontend CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Frontend to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ${{ secrets.AWS_EC2_USER }}
+          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/livechat-frontend
+            git pull origin main
+            cd /opt/livechat-backend
+            FRONTEND_CONTEXT=/opt/livechat-frontend docker compose --profile app up -d --build frontend
 ```
 
 ---

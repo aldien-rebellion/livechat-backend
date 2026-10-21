@@ -1,5 +1,5 @@
 {
-  "summary":  "Actionable project implementation roadmap and sprint plan for the 4-member team to build the Live Chat platform across 2 repositories (livechat-backend and livechat-frontend) targeting AWS EC2 before Friday 24th.",
-  "updatedAt":  "2026-10-16T11:20:02.011960400Z",
-  "userFacing":  true
+  "summary": "Updated project build roadmap with separated CI (Step 1) and CD (Step 5) pipelines for both repositories (Backend #1-#15 and Frontend #1-#9), adding Frontend CI build verification and EC2 SSH deployment, unified chronological flow, and exact role titles.",
+  "updatedAt": "2026-10-21T16:55:00.000000000Z",
+  "userFacing": true
 }
