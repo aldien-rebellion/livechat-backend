@@ -93,6 +93,28 @@ API ใน container เชื่อม DB ที่ `postgres:5432` และ R
 Compose รอให้ DB/Redis healthy ก่อนเริ่ม API แต่ยังต้องรอแอปพร้อมและทำ migration ตาม BE #7
 Nginx รับ HTTP ใน issue นี้; HTTPS/SSL อยู่ใน Backend #5
 
+## CI Pipeline — Backend #4
+
+GitHub Actions workflow อยู่ที่ `.github/workflows/ci.yml` รันอัตโนมัติบนทุก Pull Request และ Push เข้า branch `main`:
+1. ตรวจสอบ Linting และ Syntax ด้วย `flake8`
+2. รัน Automated Tests ด้วย `pytest` ร่วมกับ Service Containers (PostgreSQL 15 และ Redis 7)
+
+### การรัน Lint และ Test บนเครื่อง Local
+
+```powershell
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# ตรวจสอบ Code Style / Syntax
+flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+# รัน Pytest
+pytest
+```
+
+หากต้องการให้ test ตรวจสอบการเชื่อมต่อ Postgres/Redis บนเครื่อง local ให้เปิดบริการก่อนด้วย `docker compose up -d`
+
 ## หยุดบริการและเก็บข้อมูล
 
 ```powershell
