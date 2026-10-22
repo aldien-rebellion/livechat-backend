@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 127
+max-complexity = 10
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    .local,
+    infra/ec2/.terraform,
+    .be1-smoke
+ignore =
+    E203,
+    W503
