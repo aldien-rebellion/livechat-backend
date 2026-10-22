@@ -33,6 +33,7 @@ services:
 
   backend:
     profiles: ["app"]
+    image: ${BACKEND_IMAGE:-${DOCKERHUB_USERNAME:-aldien}/livechat-backend:latest}
     build:
       context: .
     environment:
@@ -48,6 +49,7 @@ services:
 
   frontend:
     profiles: ["app"]
+    image: ${FRONTEND_IMAGE:-${DOCKERHUB_USERNAME:-aldien}/livechat-frontend:latest}
     build:
       context: "${FRONTEND_CONTEXT:-../livechat frontend}"
 

@@ -2,7 +2,7 @@
 > **Target Deadline:** ก่อนวันศุกร์ที่ 24  
 > **Repository Strategy:** 2 Repositories แยกกัน (`livechat-backend` & `livechat-frontend`)  
 > **Team Accountability:** 4 บทบาทชัดเจน ทุกคนมีประวัติ Git Commit ใน Issues ของตัวเอง  
-> **Deployment Target:** AWS EC2 + Docker Compose + Nginx (HTTPS Let's Encrypt)
+> **Deployment Target:** Cloud (AWS EC2 / DigitalOcean) + Docker Hub + Docker Compose + Nginx (HTTPS Let's Encrypt)
 
 ---
 
@@ -11,7 +11,7 @@
 * 🌸 **`[คนที่ 1 {Frontend Lead}]`**: รับผิดชอบ React + Vite + TypeScript + Tailwind CSS, WebSocket Client, หน้าจอ UI ทั้งหมด
 * 🍊 **`[คนที่ 2 {Backend Lead}]`**: รับผิดชอบ FastAPI Core, Dual-Token JWT, Workspace WebSocket Hub (`/ws`), Redis Pub/Sub, Presence
 * 🍏 **`[คนที่ 3 {Database Lead}]`**: รับผิดชอบ SQLAlchemy 2.0 Models, Alembic Migrations, PostgreSQL Full-Text Search (`tsvector` & `ts_rank`)
-* 🔷 **`[คนที่ 4 {DevOps Lead}]`**: รับผิดชอบ Dockerfile (ทั้ง 2 Repos), docker-compose, AWS EC2, GitHub Actions CI & CD (ทั้ง 2 Repos), SSL & Prometheus/Grafana
+* 🔷 **`[คนที่ 4 {DevOps Lead}]`**: รับผิดชอบ Dockerfile (ทั้ง 2 Repos), docker-compose, Cloud Provisioning (Terraform), Docker Hub Build/Push, GitHub Actions CI & CD (ทั้ง 2 Repos), SSL & Prometheus/Grafana
 
 ---
 
@@ -74,8 +74,8 @@ flowchart TD
 
     %% Subgraph Step 5
     subgraph Step5 ["📍 ลำดับที่ 5: ขั้นนำขึ้นระบบจริงและมอนิเตอร์ (Production & Monitoring)"]
-        BE15["Backend #15: CD Workflow (SSH Deploy Backend to EC2)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
-        FE9["Frontend #9: CD Workflow (SSH Deploy Frontend to EC2)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        BE15["Backend #15: CD Workflow (Docker Hub Push & SSH Pull)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
+        FE9["Frontend #9: CD Workflow (Docker Hub Push & SSH Pull)\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
         BE5["Backend #5: SSL Let's Encrypt & Prometheus/Grafana\n[คนที่ 4 {DevOps Lead}]"]:::c_person4
     end
 
@@ -143,7 +143,7 @@ flowchart TD
 
 ---
 
-### ☁️ Step 5: นำขึ้นระบบจริงและมอนิเตอร์ (Production & Monitoring)
-* **Backend #15:** `[CD] เขียน GitHub Actions Workflow Deploy Backend สู่ AWS EC2 ผ่าน SSH (docker compose restart & alembic)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
-* **Frontend #9:** `[CD] เขียน GitHub Actions Workflow Deploy Frontend สู่ AWS EC2 ผ่าน SSH (git pull /opt/livechat-frontend & docker build)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
+### ☁️ Step 5: นำขึ้นระบบจริงและมอนิเตอร์ (Production & Monitoring — อ้างอิง Workshop 11 & 12)
+* **Backend #15:** `[CD] สร้าง GitHub Actions CD (Build & Push Docker Hub และ Deploy สู่ Cloud ผ่าน SSH)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
+* **Frontend #9:** `[CD] สร้าง GitHub Actions CD (Build & Push Docker Hub และ Deploy สู่ Cloud ผ่าน SSH)` — `[คนที่ 4 {DevOps Lead}]` *(ทำเมื่อระบบใน Step 1-4 เชื่อมต่อกันเรียบร้อย)*
 * **Backend #5:** `[Observability & SSL] ติดตั้ง SSL Let's Encrypt (Certbot) และระบบมอนิเตอร์ Prometheus + Grafana` — `[คนที่ 4 {DevOps Lead}]` *(ทำต่อจาก Backend #15 และ Frontend #9)*

@@ -25,7 +25,7 @@ apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
 usermod -aG docker ubuntu
-install -d -m 0755 -o ubuntu -g ubuntu /opt/livechat-backend /opt/livechat-frontend
+install -d -m 0755 -o ubuntu -g ubuntu /opt/livechat-server /opt/livechat-backend /opt/livechat-frontend
 
 # Keep these checks in the boot log; a running VM alone is not proof of success.
 docker --version

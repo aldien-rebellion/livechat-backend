@@ -82,11 +82,11 @@ sudo test -f /var/lib/livechat-bootstrap-complete
 docker --version
 docker compose version
 docker info
-ls -ld /opt/livechat-backend /opt/livechat-frontend
+ls -ld /opt/livechat-server /opt/livechat-backend /opt/livechat-frontend
 ```
 
 หากติดตั้งไม่ผ่าน ตรวจ `sudo tail -n 100 /var/log/cloud-init-output.log`
-HTTP/HTTPS จะยังไม่มีแอปตอบจนกว่าจะ deploy Compose ใน BE #4 และตั้ง TLS ใน BE #5
+HTTP/HTTPS จะยังไม่มีแอปตอบจนกว่าจะ deploy Compose ใน BE #15 / FE #9 และตั้ง TLS ใน BE #5
 การเปลี่ยน cloud-init/AMI อาจทำให้ Terraform replace เครื่อง ต้องสำรองข้อมูลก่อน apply การเปลี่ยนดังกล่าว
 public IP อาจเปลี่ยนหลัง stop/start; ให้อัปเดต host/DNS ตาม output ล่าสุด
 
