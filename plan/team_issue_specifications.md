@@ -198,20 +198,25 @@
 
 ---
 
-### [Backend #15] [CD] เขียน GitHub Actions Workflow Deploy Backend สู่ AWS EC2 ผ่าน SSH
+### [Backend #15] [CD] สร้าง GitHub Actions CD (Build & Push Docker Hub และ Deploy สู่ Cloud ผ่าน SSH)
 * **ผู้รับผิดชอบ:** `[คนที่ 4 {DevOps Lead}]`
-* **ลำดับการทำงาน:** Step 5 *(ทำเมื่อระบบ Step 1-4 เชื่อมต่อกันแล้ว)*
+* **ลำดับการทำงาน:** Step 5 *(ทำเมื่อระบบ Step 1-4 เชื่อมต่อกันแล้ว — อ้างอิง Workshop 11 & 12)*
 * **รายละเอียดที่ต้องเขียนใน Issue:**
-  * สร้าง `.github/workflows/cd.yml`:
-    1. Trigger: `push` ไปยัง `main` เท่านั้น
-    2. ใช้ Action `appleboy/ssh-action@v1.0.3` เชื่อมต่อ EC2 ผ่าน Secrets (`AWS_EC2_HOST`, `AWS_EC2_USER`, `AWS_SSH_PRIVATE_KEY`)
-    3. คำสั่ง Deploy:
-       ```bash
-       cd /opt/livechat-backend
-       git pull origin main
-       docker compose up -d --build backend
-       docker compose exec -T backend alembic upgrade head
-       ```
+  * สร้าง `.github/workflows/cd.yml` มี 2 Jobs ต่อเนื่องกัน:
+    1. **Job `build-and-push` (Workshop 11):**
+       - Login เข้า Docker Hub ด้วย Action `docker/login-action@v3` (ใช้ Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`)
+       - บิลด์และพุช Image ด้วย Action `docker/build-push-action@v5`
+       - กำหนด Tags: `${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:latest` และ `:${{ github.sha }}`
+    2. **Job `deploy-to-server` (Workshop 12):**
+       - กำหนด `needs: build-and-push` (รอจน Image พุชสำเร็จ)
+       - เชื่อมต่อ Cloud Instance ด้วย Action `appleboy/ssh-action@v1.0.3` (ใช้ Secrets: `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`)
+       - คำสั่ง Script ที่ส่งไปรันบนเซิร์ฟเวอร์ (ดึง Image สำเร็จรูป ไม่ต้องบิลด์บนเซิร์ฟเวอร์เพื่อประหยัด RAM/CPU 1 vCPU, 1GB RAM):
+         ```bash
+         cd /opt/livechat-server
+         docker pull ${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:latest
+         docker compose up -d --remove-orphans backend
+         docker compose exec -T backend alembic upgrade head
+         ```
 
 ---
 
@@ -320,17 +325,21 @@
 
 ---
 
-### [Frontend #9] [CD] เขียน GitHub Actions Workflow Deploy Frontend สู่ AWS EC2 ผ่าน SSH
+### [Frontend #9] [CD] สร้าง GitHub Actions CD (Build & Push Docker Hub และ Deploy สู่ Cloud ผ่าน SSH)
 * **ผู้รับผิดชอบ:** `[คนที่ 4 {DevOps Lead}]`
-* **ลำดับการทำงาน:** Step 5 *(ทำเมื่อระบบ Step 1-4 เชื่อมต่อกันแล้ว)*
+* **ลำดับการทำงาน:** Step 5 *(ทำเมื่อระบบ Step 1-4 เชื่อมต่อกันแล้ว — อ้างอิง Workshop 11 & 12)*
 * **รายละเอียดที่ต้องเขียนใน Issue:**
-  * สร้าง `.github/workflows/cd.yml`:
-    1. Trigger: `push` ไปยัง `main` เท่านั้น
-    2. ใช้ Action `appleboy/ssh-action@v1.0.3` เชื่อมต่อ EC2 ผ่าน Secrets (`AWS_EC2_HOST`, `AWS_EC2_USER`, `AWS_SSH_PRIVATE_KEY`)
-    3. คำสั่ง Deploy:
-       ```bash
-       cd /opt/livechat-frontend
-       git pull origin main
-       cd /opt/livechat-backend
-       FRONTEND_CONTEXT=/opt/livechat-frontend docker compose --profile app up -d --build frontend
-       ```
+  * สร้าง `.github/workflows/cd.yml` มี 2 Jobs ต่อเนื่องกัน:
+    1. **Job `build-and-push` (Workshop 11):**
+       - Login เข้า Docker Hub ด้วย Action `docker/login-action@v3` (ใช้ Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`)
+       - บิลด์และพุช Image ด้วย Action `docker/build-push-action@v5`
+       - กำหนด Tags: `${{ secrets.DOCKERHUB_USERNAME }}/livechat-frontend:latest` และ `:${{ github.sha }}`
+    2. **Job `deploy-to-server` (Workshop 12):**
+       - กำหนด `needs: build-and-push`
+       - เชื่อมต่อ Cloud Instance ด้วย Action `appleboy/ssh-action@v1.0.3` (ใช้ Secrets: `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`)
+       - คำสั่ง Script ที่ส่งไปรันบนเซิร์ฟเวอร์ (ดึง Image สำเร็จรูป ไม่ต้องรัน npm build บนเซิร์ฟเวอร์คลาวด์):
+         ```bash
+         cd /opt/livechat-server
+         docker pull ${{ secrets.DOCKERHUB_USERNAME }}/livechat-frontend:latest
+         docker compose up -d --remove-orphans frontend
+         ```

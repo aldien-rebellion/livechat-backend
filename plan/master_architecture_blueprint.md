@@ -177,18 +177,32 @@ class StorageService:
 
 ---
 
-## 4. CI/CD Pipeline & AWS EC2 Automated Deployment
+## 4. CI/CD Pipeline & Cloud Automated Deployment (อ้างอิง Workshop 11 & 12)
 
-ระบบแยก CI และ CD ออกจากกันอย่างชัดเจนตามมาตรฐาน DevOps:
-* **CI (Continuous Integration):** ทำงานทันทีตั้งแต่วันแรก (Day 1 / Step 1) ตรวจสอบโค้ดบนทุก Pull Request และ Push สู่ `main`
-* **CD (Continuous Deployment):** ทำงานใน Step 5 เมื่อ Merge เข้า `main` เพื่อนำโค้ดขึ้นรันบน AWS EC2 โดยอัตโนมัติ
+ระบบจัดโครงสร้าง CI และ CD ให้สอดคล้องตามมาตรฐาน **Workshop 11 (Build the Assembly Line)** และ **Workshop 12 (To the Cloud!)** โดยคำนึงถึงข้อจำกัดของทรัพยากรเซิร์ฟเวอร์คลาวด์ (1 vCPU, 1GB RAM / t3.small):
+* **CI (Continuous Integration):** ทำงานทันทีเมื่อเปิด Pull Request (PR) เข้าสู่ `main` เพื่อรัน Linter และ Automated Tests ป้องกันโค้ดพังก่อนการ Merge (Workshop 11 กิจกรรมที่ 1)
+* **CD (Continuous Deployment):** ทำงานเมื่อโค้ดถูก Merge สู่ `main` โดยแบ่งเป็น 2 Jobs:
+  1. `build-and-push`: ใช้ GitHub Actions Runner สเปกสูงเป็นคน Build Docker Image แล้ว Push ขึ้น **Docker Hub** พร้อมแท็ก `:latest` และ `:${{ github.sha }}` (Workshop 11 กิจกรรมที่ 3)
+  2. `deploy-to-server`: SSH ไปยัง Cloud Instance เพื่อรัน `docker pull` และ `docker-compose up -d --remove-orphans` (Workshop 12 กิจกรรมที่ 3)
+  > [!NOTE]
+  > **ทำไมจึงไม่สั่ง build บนคลาวด์ตรงๆ?** เซิร์ฟเวอร์ขนาดเล็ก (1 vCPU, 1GB RAM) หากต้องรันคำสั่ง `docker build` (เช่น คอมไพล์ C dependencies หรือบันเดิล Node/Vite) อาจทำให้ CPU พุ่ง 100% และเกิดปัญหา Memory OOM (Out Of Memory) จนเครื่องค้างได้ การผลักภาระ Build ให้ GitHub Actions แล้วเซิร์ฟเวอร์ทำเพียง `docker pull` จึงเป็นวิธีที่มีประสิทธิภาพและเสถียรที่สุด
+
+### ตาราง GitHub Secrets ส่วนกลางที่ต้องเตรียม (Workshop 11 & 12)
+
+| Secret Name | คำอธิบาย | แหล่งที่มา |
+| :--- | :--- | :--- |
+| `DOCKERHUB_USERNAME` | Username ของบัญชี Docker Hub | [Docker Hub Profile](https://hub.docker.com/) |
+| `DOCKERHUB_TOKEN` | Personal Access Token (Read/Write) | Docker Hub Security -> New Access Token |
+| `SERVER_HOST` | Public IP ของเซิร์ฟเวอร์ Cloud | ได้รับจากผลลัพธ์การรัน Terraform (`outputs.tf`) |
+| `SERVER_USER` | ชื่อผู้ใช้ SSH ของเครื่องเซิร์ฟเวอร์ (เช่น `ubuntu`) | กำหนดใน OS Image ของ Cloud Instance |
+| `SSH_PRIVATE_KEY` | Private SSH Key สำหรับสั่งการเซิร์ฟเวอร์ | กุญแจคู่กับ Public Key ที่บันทึกไว้ใน `~/.ssh/authorized_keys` |
 
 ---
 
 ### 4.1 Backend Pipelines (`livechat-backend`)
 
 #### 4.1.1 Continuous Integration (`.github/workflows/ci.yml`)
-ทำงานเมื่อมีการเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจสอบคุณภาพโค้ดและรัน Automated Tests
+ทำงานเมื่อเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจสอบคุณภาพโค้ดและรัน Automated Tests
 ```yaml
 name: Backend CI
 
@@ -200,7 +214,10 @@ on:
 
 jobs:
   test:
+    name: Lint & Automated Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     services:
       postgres:
         image: postgres:15-alpine
@@ -226,9 +243,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -238,7 +256,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flake8 pytest pytest-asyncio httpx
+          pip install -r requirements-dev.txt
 
       - name: Lint with flake8
         run: |
@@ -250,11 +268,11 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/livechat_test
           REDIS_URL: redis://localhost:6379/0
         run: |
-          pytest tests
+          pytest
 ```
 
 #### 4.1.2 Continuous Deployment (`.github/workflows/cd.yml`)
-ทำงานเมื่อโค้ดถูก Merge สู่ branch `main` เท่านั้น โดย SSH เข้า AWS EC2 เพื่ออัปเดต Service Backend
+ทำงานเมื่อ Merge โค้ดเข้า branch `main` โดย Build และ Push ขึ้น Docker Hub จากนั้น SSH ไป Deploy บน Cloud Server
 ```yaml
 name: Backend CD
 
@@ -263,19 +281,47 @@ on:
     branches: [ main ]
 
 jobs:
-  deploy:
+  build-and-push:
+    name: Build & Push Backend Image to Docker Hub
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy Backend to AWS EC2 via SSH
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:${{ github.sha }}
+
+  deploy-to-server:
+    name: Deploy to Cloud Server via SSH
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH to Server and Update Container
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ${{ secrets.AWS_EC2_USER }}
-          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/livechat-backend
-            git pull origin main
-            docker compose up -d --build backend
+            cd /opt/livechat-server
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:latest
+            docker compose up -d --remove-orphans backend
             docker compose exec -T backend alembic upgrade head
 ```
 
@@ -284,7 +330,7 @@ jobs:
 ### 4.2 Frontend Pipelines (`livechat-frontend`)
 
 #### 4.2.1 Continuous Integration (`.github/workflows/ci.yml`)
-ทำงานเมื่อมีการเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจ Type Check, Lint และทดสอบ Build จริงของ React + Vite
+ทำงานเมื่อเปิด Pull Request หรือ Push เข้า `main` เพื่อตรวจ Type Check, Lint และทดสอบ Build ของ React + Vite
 ```yaml
 name: Frontend CI
 
@@ -296,9 +342,11 @@ on:
 
 jobs:
   verify:
+    name: Lint, Type Check & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -319,7 +367,7 @@ jobs:
 ```
 
 #### 4.2.2 Continuous Deployment (`.github/workflows/cd.yml`)
-ทำงานเมื่อโค้ดถูก Merge สู่ branch `main` เท่านั้น โดย SSH เข้า AWS EC2 ไปยังโฟลเดอร์ `/opt/livechat-frontend` สั่ง `git pull` และสั่ง build คอนเทนเนอร์ Frontend ใหม่
+ทำงานเมื่อ Merge โค้ดเข้า branch `main` โดย Build Docker Image (Vite Multi-stage Nginx) ส่งขึ้น Docker Hub และสั่ง Deploy บนเซิร์ฟเวอร์
 ```yaml
 name: Frontend CD
 
@@ -328,20 +376,47 @@ on:
     branches: [ main ]
 
 jobs:
-  deploy:
+  build-and-push:
+    name: Build & Push Frontend Image to Docker Hub
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy Frontend to AWS EC2 via SSH
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/livechat-frontend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/livechat-frontend:${{ github.sha }}
+
+  deploy-to-server:
+    name: Deploy to Cloud Server via SSH
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH to Server and Update Container
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ${{ secrets.AWS_EC2_USER }}
-          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/livechat-frontend
-            git pull origin main
-            cd /opt/livechat-backend
-            FRONTEND_CONTEXT=/opt/livechat-frontend docker compose --profile app up -d --build frontend
+            cd /opt/livechat-server
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/livechat-frontend:latest
+            docker compose up -d --remove-orphans frontend
 ```
 
 ---
