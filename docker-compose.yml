@@ -3,6 +3,8 @@ name: livechat
 services:
   postgres:
     image: postgres:15-alpine
+    container_name: livechat_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -20,6 +22,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: livechat_redis
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -34,11 +38,14 @@ services:
   backend:
     profiles: ["app"]
     image: ${BACKEND_IMAGE:-${DOCKERHUB_USERNAME:-aldien}/livechat-backend:latest}
+    container_name: livechat_backend
+    restart: unless-stopped
     build:
       context: .
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-livechat_db}
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-supersecretkeyforjwtchangemeinproduction}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
@@ -50,22 +57,81 @@ services:
   frontend:
     profiles: ["app"]
     image: ${FRONTEND_IMAGE:-${DOCKERHUB_USERNAME:-aldien}/livechat-frontend:latest}
+    container_name: livechat_frontend
+    restart: unless-stopped
     build:
       context: "${FRONTEND_CONTEXT:-../livechat frontend}"
 
   nginx:
     profiles: ["app"]
     image: nginx:alpine
+    container_name: livechat_nginx
+    restart: unless-stopped
     ports:
       - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
     depends_on:
       backend:
         condition: service_started
       frontend:
         condition: service_started
 
+  prometheus:
+    profiles: ["app", "monitoring"]
+    image: prom/prometheus:v2.48.0
+    container_name: livechat_prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      backend:
+        condition: service_started
+
+  grafana:
+    profiles: ["app", "monitoring"]
+    image: grafana/grafana:10.2.2
+    container_name: livechat_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin1234}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  certbot:
+    profiles: ["app", "ssl"]
+    image: certbot/certbot:latest
+    container_name: livechat_certbot
+    volumes:
+      - certbot_www:/var/www/certbot:rw
+      - certbot_conf:/etc/letsencrypt:rw
+
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
+  certbot_www:
+  certbot_conf:
