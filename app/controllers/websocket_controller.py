@@ -1,3 +1,5 @@
+import json
+import redis.asyncio as redis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict, List
 
@@ -6,6 +8,7 @@ router = APIRouter(tags=["WebSocket"])
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.redis_client = redis.from_url("redis://localhost:6379", decode_responses=True)
 
     async def connect(self, workspace_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -19,19 +22,28 @@ class ConnectionManager:
             if not self.active_connections[workspace_id]:
                 del self.active_connections[workspace_id]
 
-    async def broadcast(self, workspace_id: str, message: dict):
+    async def broadcast_to_local(self, workspace_id: str, message: dict):
         if workspace_id in self.active_connections:
             for connection in self.active_connections[workspace_id]:
                 await connection.send_json(message)
+
+    async def publish_message(self, workspace_id: str, message: dict):
+        # ส่งข้อความเข้า Redis Channel เพื่อกระจายข้าม Node/Instance
+        await self.redis_client.publish(f"workspace:{workspace_id}", json.dumps(message))
 
 manager = ConnectionManager()
 
 @router.websocket("/ws/{workspace_id}")
 async def websocket_endpoint(websocket: WebSocket, workspace_id: str):
     await manager.connect(workspace_id, websocket)
+    pubsub = manager.redis_client.pubsub()
+    await pubsub.subscribe(f"workspace:{workspace_id}")
+    
     try:
         while True:
             data = await websocket.receive_json()
-            await manager.broadcast(workspace_id, data)
+            await manager.publish_message(workspace_id, data)
     except WebSocketDisconnect:
         manager.disconnect(workspace_id, websocket)
+        await pubsub.unsubscribe(f"workspace:{workspace_id}")
+        
