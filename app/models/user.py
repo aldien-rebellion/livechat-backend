@@ -5,6 +5,11 @@ from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.workspace import Workspace
+    from app.models.workspace_member import WorkspaceMember
 
 
 class User(Base):

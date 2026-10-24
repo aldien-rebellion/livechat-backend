@@ -5,6 +5,11 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.workspace import Workspace
+    from app.models.message import Message
 
 
 class Channel(Base):
