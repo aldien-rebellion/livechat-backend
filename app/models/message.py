@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -43,6 +44,10 @@ class Message(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+    search_vector: Mapped[str | None] = mapped_column(
+    TSVECTOR,
+    nullable=True,
     )
 
     workspace: Mapped["Workspace"] = relationship(
