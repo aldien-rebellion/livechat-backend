@@ -1,3 +1,5 @@
+import json
+import redis.asyncio as redis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict, List
 
@@ -6,6 +8,7 @@ router = APIRouter(tags=["WebSocket"])
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.redis_client = redis.from_url("redis://localhost:6379", decode_responses=True)
 
     async def connect(self, workspace_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -20,8 +23,7 @@ class ConnectionManager:
                 del self.active_connections[workspace_id]
 
     async def update_presence(self, user_id: str, status: str):
-        # บันทึกสถานะ Online/Offline ลง Redis พร้อม TTL 60 วินาที
-        pass
+        await self.redis_client.set(f"presence:{user_id}", status, ex=60)
 
 manager = ConnectionManager()
 
