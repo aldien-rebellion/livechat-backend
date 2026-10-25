@@ -1,14 +1,29 @@
 import json
-import redis.asyncio as redis
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import logging
+import os
 from typing import Dict, List
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+try:
+    import redis.asyncio as redis
+except ImportError:
+    redis = None
+
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        self.redis_client = redis.from_url("redis://localhost:6379", decode_responses=True)
+        redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+        if redis:
+            try:
+                self.redis_client = redis.from_url(redis_url, decode_responses=True)
+            except Exception as e:
+                logger.warning(f"Could not connect to Redis: {e}")
+                self.redis_client = None
+        else:
+            self.redis_client = None
 
     async def connect(self, workspace_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -23,7 +38,11 @@ class ConnectionManager:
                 del self.active_connections[workspace_id]
 
     async def update_presence(self, user_id: str, status: str):
-        await self.redis_client.set(f"presence:{user_id}", status, ex=60)
+        if self.redis_client:
+            try:
+                await self.redis_client.set(f"presence:{user_id}", status, ex=60)
+            except Exception as e:
+                logger.warning(f"Failed to update presence in Redis: {e}")
 
 manager = ConnectionManager()
 
