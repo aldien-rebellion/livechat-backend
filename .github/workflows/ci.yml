@@ -60,6 +60,12 @@ jobs:
           # Exit-zero treats all errors as warnings. Complexity check with max 10
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/livechat_test
+        run: |
+          alembic upgrade head
+
       - name: Run Pytest
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/livechat_test
