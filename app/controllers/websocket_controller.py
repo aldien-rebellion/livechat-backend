@@ -22,28 +22,20 @@ class ConnectionManager:
             if not self.active_connections[workspace_id]:
                 del self.active_connections[workspace_id]
 
-    async def broadcast_to_local(self, workspace_id: str, message: dict):
-        if workspace_id in self.active_connections:
-            for connection in self.active_connections[workspace_id]:
-                await connection.send_json(message)
-
-    async def publish_message(self, workspace_id: str, message: dict):
-        # ส่งข้อความเข้า Redis Channel เพื่อกระจายข้าม Node/Instance
-        await self.redis_client.publish(f"workspace:{workspace_id}", json.dumps(message))
+    async def update_presence(self, user_id: str, status: str):
+        await self.redis_client.set(f"presence:{user_id}", status, ex=60)
 
 manager = ConnectionManager()
 
-@router.websocket("/ws/{workspace_id}")
-async def websocket_endpoint(websocket: WebSocket, workspace_id: str):
+@router.websocket("/ws/{workspace_id}/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, workspace_id: str, user_id: str):
     await manager.connect(workspace_id, websocket)
-    pubsub = manager.redis_client.pubsub()
-    await pubsub.subscribe(f"workspace:{workspace_id}")
-    
+    await manager.update_presence(user_id, "online")
     try:
         while True:
             data = await websocket.receive_json()
-            await manager.publish_message(workspace_id, data)
+            if data.get("type") == "heartbeat":
+                await manager.update_presence(user_id, "online")
     except WebSocketDisconnect:
         manager.disconnect(workspace_id, websocket)
-        await pubsub.unsubscribe(f"workspace:{workspace_id}")
-        
+        await manager.update_presence(user_id, "offline")
