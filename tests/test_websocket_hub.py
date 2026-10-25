@@ -86,29 +86,36 @@ async def test_connection_manager_update_presence():
 
 
 def test_websocket_endpoint_full_protocol_flow():
-    client = TestClient(app)
+    from app.controllers.websocket_controller import manager
 
-    with client.websocket_connect("/ws?token=test_token_abc") as ws1:
-        with client.websocket_connect("/ws?token=test_token_xyz") as ws2:
-            # 1. Heartbeat frame
-            ws1.send_json({"action": "heartbeat"})
+    original_redis = manager.redis_client
+    manager.redis_client = AsyncMock()
+    try:
+        client = TestClient(app)
 
-            # 2. Subscribe frame
-            ws1.send_json({"action": "subscribe", "channel_id": "ch_general"})
+        with client.websocket_connect("/ws?token=test_token_abc") as ws1:
+            with client.websocket_connect("/ws?token=test_token_xyz") as ws2:
+                # 1. Heartbeat frame
+                ws1.send_json({"action": "heartbeat"})
 
-            # 3. Typing frame - should broadcast to ws2
-            ws1.send_json({"action": "typing", "channel_id": "ch_general"})
-            typing_event = ws2.receive_json()
-            assert typing_event["type"] == "user_typing"
-            assert typing_event["channelId"] == "ch_general"
+                # 2. Subscribe frame
+                ws1.send_json({"action": "subscribe", "channel_id": "ch_general"})
 
-            # 4. Send message frame - should broadcast to ws2
-            ws1.send_json({
-                "action": "send_message",
-                "channel_id": "ch_general",
-                "content": "Hello via WebSocket!",
-            })
-            msg_event = ws2.receive_json()
-            assert msg_event["type"] == "new_message"
-            assert msg_event["message"]["content"] == "Hello via WebSocket!"
-            assert msg_event["message"]["channel_id"] == "ch_general"
+                # 3. Typing frame - should broadcast to ws2
+                ws1.send_json({"action": "typing", "channel_id": "ch_general"})
+                typing_event = ws2.receive_json()
+                assert typing_event["type"] == "user_typing"
+                assert typing_event["channelId"] == "ch_general"
+
+                # 4. Send message frame - should broadcast to ws2
+                ws1.send_json({
+                    "action": "send_message",
+                    "channel_id": "ch_general",
+                    "content": "Hello via WebSocket!",
+                })
+                msg_event = ws2.receive_json()
+                assert msg_event["type"] == "new_message"
+                assert msg_event["message"]["content"] == "Hello via WebSocket!"
+                assert msg_event["message"]["channel_id"] == "ch_general"
+    finally:
+        manager.redis_client = original_redis

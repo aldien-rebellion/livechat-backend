@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -19,7 +20,12 @@ class ConnectionManager:
         redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
         if redis:
             try:
-                self.redis_client = redis.from_url(redis_url, decode_responses=True)
+                self.redis_client = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_timeout=2.0,
+                    socket_connect_timeout=2.0,
+                )
             except Exception as e:
                 logger.warning(f"Could not connect to Redis: {e}")
                 self.redis_client = None
@@ -51,7 +57,10 @@ class ConnectionManager:
     async def update_presence(self, user_id: str, status: str):
         if self.redis_client and user_id:
             try:
-                await self.redis_client.set(f"presence:{user_id}", status, ex=60)
+                await asyncio.wait_for(
+                    self.redis_client.set(f"presence:{user_id}", status, ex=60),
+                    timeout=2.0,
+                )
             except Exception as e:
                 logger.warning(f"Failed to update presence in Redis: {e}")
 
