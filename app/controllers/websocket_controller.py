@@ -10,6 +10,7 @@ from app.db.session import async_session_maker
 from app.models.message import Message
 from app.models.workspace import Workspace
 from app.models.channel import Channel
+from app.models.user import User
 
 try:
     import redis.asyncio as redis
@@ -50,8 +51,12 @@ async def save_message_to_db(workspace_ref: str, channel_ref: str, user_id_val: 
                 await db.commit()
                 await db.refresh(ch)
 
-            # 3. Resolve user_id
+            # 3. Resolve user_id safely
             uid = int(user_id_val) if user_id_val.isdigit() else 1
+            user_exists = await db.get(User, uid)
+            if not user_exists:
+                first_user = await db.scalar(select(User).limit(1))
+                uid = first_user.id if first_user else 1
 
             # 4. Save message
             msg = Message(
@@ -106,6 +111,16 @@ class ConnectionManager:
                     except Exception:
                         self.disconnect(workspace_id, connection)
 
+    async def broadcast_all(self, message: dict, sender: WebSocket = None):
+        """Broadcast message to all connected clients across all workspaces."""
+        for ws_key in list(self.active_connections.keys()):
+            for connection in list(self.active_connections.get(ws_key, [])):
+                if connection != sender:
+                    try:
+                        await connection.send_json(message)
+                    except Exception:
+                        self.disconnect(ws_key, connection)
+
     async def update_presence(self, user_id: str, status: str):
         if self.redis_client and user_id:
             try:
@@ -150,8 +165,8 @@ async def websocket_endpoint(
                 logger.info(f"User {effective_user} subscribed to channel {channel_id}")
             elif action == "typing":
                 channel_id = data.get("channel_id")
-                await manager.broadcast(
-                    effective_workspace,
+                # Broadcast typing across all connections so everyone in the channel sees it
+                await manager.broadcast_all(
                     {
                         "type": "user_typing",
                         "workspaceId": effective_workspace,
@@ -162,7 +177,7 @@ async def websocket_endpoint(
                     sender=websocket,
                 )
             elif action == "send_message":
-                channel_id = data.get("channel_id")
+                channel_id = str(data.get("channel_id", "general"))
                 content = data.get("content", "")
                 created_at_iso = datetime.now(timezone.utc).isoformat()
                 msg_id = f"msg_{os.urandom(6).hex()}"
@@ -183,9 +198,8 @@ async def websocket_endpoint(
                     },
                 }
 
-                # Broadcast to all connected clients in this workspace (including sender)
-                await manager.broadcast(
-                    effective_workspace,
+                # Broadcast to all connected clients across all workspaces (including sender)
+                await manager.broadcast_all(
                     message_payload,
                     sender=None,
                 )
@@ -205,7 +219,14 @@ async def get_channel_messages(channel_id: str, limit: int = 50):
     """Retrieve recent messages for a channel."""
     try:
         async with async_session_maker() as db:
-            cid = int(channel_id) if channel_id.isdigit() else None
+            cid = None
+            if channel_id.isdigit():
+                cid = int(channel_id)
+            else:
+                ch = await db.scalar(select(Channel).where(Channel.name == channel_id))
+                if ch:
+                    cid = ch.id
+
             stmt = select(Message)
             if cid:
                 stmt = stmt.where(Message.channel_id == cid)
@@ -213,17 +234,26 @@ async def get_channel_messages(channel_id: str, limit: int = 50):
             result = await db.scalars(stmt)
             messages = list(result.all())
             messages.reverse()
+
+            # Preload user map for author names
+            user_ids = {msg.user_id for msg in messages}
+            user_map = {}
+            if user_ids:
+                users_res = await db.scalars(select(User).where(User.id.in_(user_ids)))
+                for u in users_res:
+                    user_map[u.id] = u.username or u.email.split("@")[0]
+
             return [
                 {
                     "id": str(msg.id),
-                    "channel_id": str(msg.channel_id),
+                    "channel_id": channel_id,
                     "workspace_id": str(msg.workspace_id),
                     "user_id": str(msg.user_id),
                     "content": msg.content,
                     "created_at": msg.created_at.isoformat() if msg.created_at else "",
                     "author": {
                         "id": str(msg.user_id),
-                        "full_name": f"User {msg.user_id}",
+                        "full_name": user_map.get(msg.user_id, f"User {msg.user_id}"),
                     },
                 }
                 for msg in messages
