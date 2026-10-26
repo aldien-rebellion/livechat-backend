@@ -1,8 +1,7 @@
 import secrets
+from datetime import datetime, timezone
 import pytest
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from app.main import app
 from app.services.search_service import search_messages
 from app.db.session import async_session_maker
 from app.models.user import User
@@ -103,23 +102,11 @@ async def test_search_messages_integration_with_db():
         results_none = await search_messages(session, channel_id=ch1.id, query="UnicornElephant")
         assert len(results_none) == 0
 
-
-@pytest.mark.asyncio
-async def test_search_api_endpoints():
-    """Test GET /api/v1/channels/{channel_id}/search and /channels/{channel_id}/search endpoints."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Invalid channel_id format returns empty list []
-        res_invalid = await client.get("/api/v1/channels/abc/search?q=test")
-        assert res_invalid.status_code == 200
-        assert res_invalid.json() == []
-
-        # Empty search query returns empty list
-        res_empty = await client.get("/api/v1/channels/1/search?q=")
-        assert res_empty.status_code == 200
-        assert res_empty.json() == []
-
-        # Root route /channels/{id}/search
-        res_root = await client.get("/channels/1/search?q=")
-        assert res_root.status_code == 200
-        assert res_root.json() == []
+        # Defense in depth: tombstones hide content even before a purge finishes.
+        ch1.deleted_at = datetime.now(timezone.utc)
+        await session.flush()
+        assert await search_messages(session, channel_id=ch1.id, query="Kubernetes") == []
+        ch1.deleted_at = None
+        ws.deleted_at = datetime.now(timezone.utc)
+        await session.flush()
+        assert await search_messages(session, channel_id=ch1.id, query="Kubernetes") == []

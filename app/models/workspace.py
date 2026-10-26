@@ -36,6 +36,8 @@ class Workspace(Base):
         nullable=False,
     )
 
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     creator: Mapped["User"] = relationship(
         back_populates="workspaces_created",
     )

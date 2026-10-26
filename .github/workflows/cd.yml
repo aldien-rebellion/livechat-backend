@@ -48,7 +48,10 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /opt/livechat-server
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/livechat-backend:latest
             docker compose up -d --remove-orphans backend
             docker compose exec -T backend alembic upgrade head
+            docker compose exec -T backend python -m scripts.set_admin poorin.o@ku.th --grant
+            docker compose exec -T backend python -m scripts.set_admin aldienre@gmail.com --grant

@@ -43,5 +43,7 @@ async def test_history_query_always_filters_by_resolved_channel(history_db, chan
     compiled = statement.compile(dialect=postgresql.dialect())
     assert "WHERE messages.channel_id =" in str(compiled)
     assert compiled.params["channel_id_1"] == resolved_id
-    if channel_ref.isdigit():
-        history_db.scalar.assert_not_awaited()
+    # Even numeric references resolve an active channel before fetching content.
+    channel_statement = history_db.scalar.await_args.args[0]
+    assert "channels.deleted_at IS NULL" in str(channel_statement)
+    assert "workspaces.deleted_at IS NULL" in str(channel_statement)

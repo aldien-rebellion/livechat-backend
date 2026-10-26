@@ -1,13 +1,15 @@
 import hashlib
-import os
 import secrets
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.user import User
+from app.services.auth_service import bearer, get_access_session, issue_session, refresh_session, unauthorized
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -48,6 +50,7 @@ class UserResponse(BaseModel):
     email: str
     username: str
     full_name: str
+    is_admin: bool = False
 
 
 class TokenResponse(BaseModel):
@@ -85,21 +88,19 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         hashed_password=hash_password(payload.password),
     )
     db.add(new_user)
+    await db.flush()
+    tokens = await issue_session(db, new_user.id)
     await db.commit()
     await db.refresh(new_user)
 
-    access_token = secrets.token_urlsafe(32)
-    refresh_token = secrets.token_urlsafe(48)
-
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
+        **tokens,
         "user": {
             "id": str(new_user.id),
             "email": new_user.email,
             "username": new_user.username,
             "full_name": payload.full_name or new_user.username,
+            "is_admin": bool(getattr(new_user, "is_admin", False)),
         },
     }
 
@@ -115,31 +116,34 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Email or password is incorrect.",
         )
 
-    access_token = secrets.token_urlsafe(32)
-    refresh_token = secrets.token_urlsafe(48)
+    tokens = await issue_session(db, user.id)
+    await db.commit()
 
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
+        **tokens,
         "user": {
             "id": str(user.id),
             "email": user.email,
             "username": user.username,
             "full_name": user.username,
+            "is_admin": bool(getattr(user, "is_admin", False)),
         },
     }
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-async def refresh(payload: RefreshRequest):
-    if not payload.refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token.",
-        )
-    return {
-        "access_token": secrets.token_urlsafe(32),
-        "refresh_token": payload.refresh_token,
-        "token_type": "bearer",
-    }
+async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    return await refresh_session(db, payload.refresh_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+):
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise unauthorized()
+    session = await get_access_session(db, credentials.credentials)
+    session.revoked_at = datetime.now(timezone.utc)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
