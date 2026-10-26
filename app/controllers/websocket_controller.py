@@ -8,9 +8,9 @@ from sqlalchemy import select
 
 from app.db.session import async_session_maker
 from app.models.message import Message
-from app.models.workspace import Workspace
 from app.models.channel import Channel
 from app.models.user import User
+from app.services.workspace_service import resolve_workspace
 
 try:
     import redis.asyncio as redis
@@ -25,22 +25,22 @@ async def save_message_to_db(workspace_ref: str, channel_ref: str, user_id_val: 
     """Safely persist a chat message into PostgreSQL in background."""
     try:
         async with async_session_maker() as db:
-            # 1. Resolve or create workspace
-            ws = None
-            if workspace_ref.isdigit():
-                ws = await db.get(Workspace, int(workspace_ref))
-            if not ws:
-                ws = await db.scalar(select(Workspace).where(Workspace.name == "Live Chat Team"))
-            if not ws:
-                ws = Workspace(name="Live Chat Team", created_by=1)
-                db.add(ws)
-                await db.commit()
-                await db.refresh(ws)
+            # Resolve the same sidebar workspace used by the channel API.
+            uid = int(user_id_val) if user_id_val.isdigit() else 1
+            user_exists = await db.get(User, uid)
+            if not user_exists:
+                first_user = await db.scalar(select(User).limit(1))
+                if first_user is None:
+                    return
+                uid = first_user.id
+            ws = await resolve_workspace(db, workspace_ref, created_by=uid)
 
             # 2. Resolve or create channel
             ch = None
             if channel_ref.isdigit():
                 ch = await db.get(Channel, int(channel_ref))
+                if ch is None or ch.workspace_id != ws.id:
+                    return
             if not ch:
                 ch = await db.scalar(
                     select(Channel).where(Channel.workspace_id == ws.id, Channel.name == channel_ref)
@@ -48,15 +48,7 @@ async def save_message_to_db(workspace_ref: str, channel_ref: str, user_id_val: 
             if not ch:
                 ch = Channel(workspace_id=ws.id, name=channel_ref if not channel_ref.isdigit() else "general")
                 db.add(ch)
-                await db.commit()
-                await db.refresh(ch)
-
-            # 3. Resolve user_id safely
-            uid = int(user_id_val) if user_id_val.isdigit() else 1
-            user_exists = await db.get(User, uid)
-            if not user_exists:
-                first_user = await db.scalar(select(User).limit(1))
-                uid = first_user.id if first_user else 1
+                await db.flush()
 
             # 4. Save message
             msg = Message(
