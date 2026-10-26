@@ -102,6 +102,16 @@ async def test_search_messages_integration_with_db():
         results_none = await search_messages(session, channel_id=ch1.id, query="UnicornElephant")
         assert len(results_none) == 0
 
+        # Partial English/Thai matches and SQL pattern characters are literal.
+        thai = Message(workspace_id=ws.id, channel_id=ch1.id, user_id=user.id, content="สวัสดีครับทีม ทดสอบระบบค้นหา")
+        literal = Message(workspace_id=ws.id, channel_id=ch1.id, user_id=user.id, content="Progress 50%_done")
+        other = Message(workspace_id=ws.id, channel_id=ch2.id, user_id=user.id, content="สวัสดีครับทีม")
+        session.add_all([thai, literal, other])
+        await session.flush()
+        assert [row.id for row, _ in await search_messages(session, ch1.id, "วัสดี")] == [thai.id]
+        assert [row.id for row, _ in await search_messages(session, ch1.id, "50%_")] == [literal.id]
+        assert [row.id for row, _ in await search_messages(session, ch1.id, "kubern")] == [msg1.id]
+
         # Defense in depth: tombstones hide content even before a purge finishes.
         ch1.deleted_at = datetime.now(timezone.utc)
         await session.flush()

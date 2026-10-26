@@ -1,7 +1,7 @@
 
 """Full-text search service for chat messages."""
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
@@ -14,10 +14,10 @@ async def search_messages(
     channel_id: int,
     query: str,
 ) -> list[tuple[Message, float]]:
-    """Search messages in a channel and return them by relevance.
+    """Find full-text or literal substring matches in one active channel.
 
-    Uses the existing PostgreSQL search_vector column and GIN index.
-    Returns at most 30 results.
+    Literal matching also supports partial words and unsegmented Thai text.
+    SQL wildcard characters are escaped rather than interpreted as patterns.
     """
     normalized_query = query.strip()
 
@@ -25,7 +25,7 @@ async def search_messages(
         return []
 
     ts_query = func.plainto_tsquery("simple", normalized_query)
-    rank = func.ts_rank(Message.search_vector, ts_query).label("rank")
+    rank = func.coalesce(func.ts_rank(Message.search_vector, ts_query), 0).label("rank")
 
     statement = (
         select(Message, rank)
@@ -35,9 +35,12 @@ async def search_messages(
             Message.channel_id == channel_id,
             Channel.deleted_at.is_(None),
             Workspace.deleted_at.is_(None),
-            Message.search_vector.op("@@")(ts_query),
+            or_(
+                Message.search_vector.op("@@")(ts_query),
+                func.lower(Message.content).contains(normalized_query.lower(), autoescape=True),
+            ),
         )
-        .order_by(desc("rank"))
+        .order_by(desc("rank"), Message.created_at.desc(), Message.id.desc())
         .limit(30)
     )
 
