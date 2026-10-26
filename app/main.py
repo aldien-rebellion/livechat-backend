@@ -8,6 +8,7 @@ from app.controllers.auth_controller import router as auth_router
 from app.controllers.websocket_controller import router as websocket_router, manager
 from app.controllers.search_controller import router as search_router
 from app.controllers.channel_controller import router as channel_router
+from app.controllers.workspace_controller import router as workspace_router
 
 app = FastAPI(title="LiveChat Backend API")
 
@@ -123,3 +124,5 @@ app.include_router(search_router)
 app.include_router(websocket_router)
 app.include_router(channel_router, prefix="/api/v1")
 app.include_router(channel_router)
+app.include_router(workspace_router, prefix="/api/v1")
+app.include_router(workspace_router)

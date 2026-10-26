@@ -1,15 +1,16 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
 from typing import Dict, List
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends
 from sqlalchemy import select
 
 from app.db.session import async_session_maker
 from app.models.message import Message
 from app.models.channel import Channel
+from app.models.workspace import Workspace
 from app.models.user import User
+from app.services.auth_service import authenticate_access_token, get_current_user
 from app.services.workspace_service import resolve_workspace
 
 try:
@@ -21,47 +22,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
 
 
+async def active_channel(db, workspace, channel_ref):
+    if channel_ref.isdigit():
+        channel = await db.get(Channel, int(channel_ref))
+    else:
+        channel = await db.scalar(select(Channel).where(Channel.workspace_id == workspace.id, Channel.name == channel_ref))
+    if channel is None or channel.workspace_id != workspace.id or channel.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Channel not found.")
+    return channel
+
+
 async def save_message_to_db(workspace_ref: str, channel_ref: str, user_id_val: str, content: str):
-    """Safely persist a chat message into PostgreSQL in background."""
+    """Persist only existing active rooms; never recreate deleted directories."""
+    if not user_id_val.isdigit() or not isinstance(content, str) or not content.strip():
+        return None
     try:
         async with async_session_maker() as db:
-            # Resolve the same sidebar workspace used by the channel API.
-            uid = int(user_id_val) if user_id_val.isdigit() else 1
-            user_exists = await db.get(User, uid)
-            if not user_exists:
-                first_user = await db.scalar(select(User).limit(1))
-                if first_user is None:
-                    return
-                uid = first_user.id
-            ws = await resolve_workspace(db, workspace_ref, created_by=uid)
-
-            # 2. Resolve or create channel
-            ch = None
-            if channel_ref.isdigit():
-                ch = await db.get(Channel, int(channel_ref))
-                if ch is None or ch.workspace_id != ws.id:
-                    return
-            if not ch:
-                ch = await db.scalar(
-                    select(Channel).where(Channel.workspace_id == ws.id, Channel.name == channel_ref)
-                )
-            if not ch:
-                ch = Channel(workspace_id=ws.id, name=channel_ref if not channel_ref.isdigit() else "general")
-                db.add(ch)
-                await db.flush()
-
-            # 4. Save message
-            msg = Message(
-                workspace_id=ws.id,
-                channel_id=ch.id,
-                user_id=uid,
-                content=content,
-            )
-            db.add(msg)
+            user = await db.get(User, int(user_id_val))
+            if user is None:
+                return None
+            workspace = await resolve_workspace(db, workspace_ref, lock=True)
+            channel = await active_channel(db, workspace, channel_ref)
+            message = Message(workspace_id=workspace.id, channel_id=channel.id, user_id=user.id, content=content.strip())
+            db.add(message)
             await db.commit()
-    except Exception as e:
-        logger.warning(f"Could not persist message to DB: {e}")
-
+            await db.refresh(message)
+            return {
+                "id": str(message.id), "channel_id": str(channel.id), "user_id": str(user.id),
+                "content": message.content, "created_at": message.created_at.isoformat(),
+                "author": {"id": str(user.id), "full_name": user.username},
+            }
+    except HTTPException:
+        return None
+    except Exception as exc:
+        logger.warning("Could not persist message to DB: %s", exc)
+        return None
 
 class ConnectionManager:
     def __init__(self):
@@ -139,120 +134,86 @@ async def websocket_endpoint(
     user_name_param: str | None = Query(None, alias="user_name"),
 ):
     effective_workspace = workspace_id_param or workspace_id
-    effective_user = user_id_param or (user_id if user_id != "anonymous" else (token[:8] if token else "guest"))
-    effective_name = user_name_param or effective_user
-
+    try:
+        async with async_session_maker() as db:
+            user = await authenticate_access_token(db, token or "")
+            await resolve_workspace(db, effective_workspace)
+            effective_user = str(user.id)
+            effective_name = user.username
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
     await manager.connect(effective_workspace, websocket)
     await manager.update_presence(effective_user, "online")
-
     try:
         while True:
             data = await websocket.receive_json()
             action = data.get("action") or data.get("type")
-
             if action == "heartbeat":
                 await manager.update_presence(effective_user, "online")
             elif action == "subscribe":
-                channel_id = data.get("channel_id")
-                logger.info(f"User {effective_user} subscribed to channel {channel_id}")
+                logger.info("User %s subscribed to channel %s", effective_user, data.get("channel_id"))
             elif action == "typing":
-                channel_id = data.get("channel_id")
-                # Broadcast typing across all connections so everyone in the channel sees it
-                await manager.broadcast_all(
-                    {
-                        "type": "user_typing",
-                        "workspaceId": effective_workspace,
-                        "channelId": channel_id,
-                        "userId": str(effective_user),
-                        "name": effective_name,
-                    },
-                    sender=websocket,
-                )
+                try:
+                    async with async_session_maker() as db:
+                        await authenticate_access_token(db, token or "")
+                        workspace = await resolve_workspace(db, effective_workspace)
+                        channel = await active_channel(db, workspace, str(data.get("channel_id", "")))
+                        channel_id = str(channel.id)
+                    await manager.broadcast(effective_workspace, {
+                        "type": "user_typing", "workspaceId": effective_workspace, "channelId": channel_id,
+                        "userId": effective_user, "name": effective_name,
+                    }, sender=websocket)
+                except HTTPException:
+                    continue
             elif action == "send_message":
-                channel_id = str(data.get("channel_id", "general"))
-                content = data.get("content", "")
-                created_at_iso = datetime.now(timezone.utc).isoformat()
-                msg_id = f"msg_{os.urandom(6).hex()}"
-
-                message_payload = {
-                    "type": "new_message",
-                    "workspaceId": effective_workspace,
-                    "message": {
-                        "id": msg_id,
-                        "channel_id": channel_id,
-                        "user_id": str(effective_user),
-                        "content": content,
-                        "created_at": created_at_iso,
-                        "author": {
-                            "id": str(effective_user),
-                            "full_name": effective_name,
-                        },
-                    },
-                }
-
-                # Broadcast to all connected clients across all workspaces (including sender)
-                await manager.broadcast_all(
-                    message_payload,
-                    sender=None,
+                try:
+                    async with async_session_maker() as db:
+                        await authenticate_access_token(db, token or "")
+                except HTTPException:
+                    await websocket.close(code=4401)
+                    break
+                message = await save_message_to_db(
+                    effective_workspace, str(data.get("channel_id", "")), effective_user, data.get("content", "")
                 )
-
-                # Persist to database in background
-                asyncio.create_task(
-                    save_message_to_db(effective_workspace, channel_id, str(effective_user), content)
-                )
+                if message is None:
+                    await websocket.send_json({"type": "error", "message": "Channel unavailable. Message was not sent."})
+                    continue
+                await manager.broadcast(effective_workspace, {
+                    "type": "new_message", "workspaceId": effective_workspace, "message": message,
+                })
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(effective_workspace, websocket)
         await manager.update_presence(effective_user, "offline")
 
 
 @router.get("/channels/{channel_id}/messages")
 @router.get("/api/v1/channels/{channel_id}/messages")
-async def get_channel_messages(channel_id: str, limit: int = 50):
-    """Retrieve recent messages for a channel."""
+async def get_channel_messages(channel_id: str, limit: int = 50, user: User = Depends(get_current_user)):
+    """Retrieve recent content only from an active channel and workspace."""
     try:
         async with async_session_maker() as db:
-            cid = None
-            if channel_id.isdigit():
-                cid = int(channel_id)
-            else:
-                ch = await db.scalar(select(Channel).where(Channel.name == channel_id))
-                if ch:
-                    cid = ch.id
-
-            # A new channel may not exist until its first message is saved.
-            # Never fall back to querying every channel's history in that case.
-            if cid is None:
+            channel_filter = Channel.id == int(channel_id) if channel_id.isdigit() else Channel.name == channel_id
+            channel = await db.scalar(select(Channel).join(Workspace).where(
+                channel_filter, Channel.deleted_at.is_(None), Workspace.deleted_at.is_(None),
+            ))
+            if channel is None:
                 return []
-
-            stmt = select(Message).where(Message.channel_id == cid)
-            stmt = stmt.order_by(Message.created_at.desc()).limit(limit)
-            result = await db.scalars(stmt)
+            result = await db.scalars(select(Message).where(Message.channel_id == channel.id)
+                                      .order_by(Message.created_at.desc()).limit(max(1, min(limit, 100))))
             messages = list(result.all())
             messages.reverse()
-
-            # Preload user map for author names
-            user_ids = {msg.user_id for msg in messages}
-            user_map = {}
-            if user_ids:
-                users_res = await db.scalars(select(User).where(User.id.in_(user_ids)))
-                for u in users_res:
-                    user_map[u.id] = u.username or u.email.split("@")[0]
-
-            return [
-                {
-                    "id": str(msg.id),
-                    "channel_id": channel_id,
-                    "workspace_id": str(msg.workspace_id),
-                    "user_id": str(msg.user_id),
-                    "content": msg.content,
-                    "created_at": msg.created_at.isoformat() if msg.created_at else "",
-                    "author": {
-                        "id": str(msg.user_id),
-                        "full_name": user_map.get(msg.user_id, f"User {msg.user_id}"),
-                    },
-                }
-                for msg in messages
-            ]
-    except Exception as e:
-        logger.warning(f"Error fetching channel messages: {e}")
+            user_ids = {message.user_id for message in messages}
+            users = await db.scalars(select(User).where(User.id.in_(user_ids))) if user_ids else []
+            names = {user.id: user.username or user.email.split("@")[0] for user in users}
+            return [{
+                "id": str(message.id), "channel_id": str(channel.id), "workspace_id": str(message.workspace_id),
+                "user_id": str(message.user_id), "content": message.content,
+                "created_at": message.created_at.isoformat() if message.created_at else "",
+                "author": {"id": str(message.user_id), "full_name": names.get(message.user_id, f"User {message.user_id}")},
+            } for message in messages]
+    except Exception as exc:
+        logger.warning("Error fetching channel messages: %s", exc)
         return []

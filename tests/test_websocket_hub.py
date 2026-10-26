@@ -5,6 +5,11 @@ from app.main import app
 from app.controllers.websocket_controller import ConnectionManager
 
 
+@pytest.fixture(autouse=True)
+def init_test_database():
+    """Hub transport tests do not need a database."""
+
+
 class MockWebSocket:
     def __init__(self):
         self.sent_messages = []
@@ -85,8 +90,24 @@ async def test_connection_manager_update_presence():
     mock_redis.set.assert_awaited_once_with("presence:user_123", "online", ex=60)
 
 
-def test_websocket_endpoint_full_protocol_flow():
+def test_websocket_endpoint_full_protocol_flow(monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from app.controllers import websocket_controller as controller
     from app.controllers.websocket_controller import manager
+
+    @asynccontextmanager
+    async def session():
+        yield object()
+
+    monkeypatch.setattr(controller, "async_session_maker", session)
+    monkeypatch.setattr(controller, "authenticate_access_token", AsyncMock(return_value=SimpleNamespace(id=1, username="One")))
+    monkeypatch.setattr(controller, "resolve_workspace", AsyncMock(return_value=SimpleNamespace(id=5)))
+    monkeypatch.setattr(controller, "active_channel", AsyncMock(return_value=SimpleNamespace(id="ch_general")))
+    monkeypatch.setattr(controller, "save_message_to_db", AsyncMock(return_value={
+        "id": "12", "channel_id": "ch_general", "user_id": "1", "content": "Hello via WebSocket!",
+        "created_at": "2026-10-26T00:00:00Z", "author": {"id": "1", "full_name": "One"},
+    }))
 
     original_redis = manager.redis_client
     manager.redis_client = AsyncMock()

@@ -5,6 +5,8 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
+from app.models.channel import Channel
+from app.models.workspace import Workspace
 
 
 async def search_messages(
@@ -27,8 +29,12 @@ async def search_messages(
 
     statement = (
         select(Message, rank)
+        .join(Channel, Channel.id == Message.channel_id)
+        .join(Workspace, Workspace.id == Message.workspace_id)
         .where(
             Message.channel_id == channel_id,
+            Channel.deleted_at.is_(None),
+            Workspace.deleted_at.is_(None),
             Message.search_vector.op("@@")(ts_query),
         )
         .order_by(desc("rank"))
