@@ -227,9 +227,12 @@ async def get_channel_messages(channel_id: str, limit: int = 50):
                 if ch:
                     cid = ch.id
 
-            stmt = select(Message)
-            if cid:
-                stmt = stmt.where(Message.channel_id == cid)
+            # A new channel may not exist until its first message is saved.
+            # Never fall back to querying every channel's history in that case.
+            if cid is None:
+                return []
+
+            stmt = select(Message).where(Message.channel_id == cid)
             stmt = stmt.order_by(Message.created_at.desc()).limit(limit)
             result = await db.scalars(stmt)
             messages = list(result.all())
